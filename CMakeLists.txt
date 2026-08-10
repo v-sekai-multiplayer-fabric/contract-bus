@@ -37,7 +37,7 @@ add_custom_command(
     OUTPUT ${STUB_CC} ${STUB_H}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${STUB_DIR}
     COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/generate_stubs/generate_stubs.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/generate_stubs/generate_stubs.py
             -o ${STUB_DIR} -i ${STUB_DIR}
             -t posix_stubs -s iceoryx2_stubs -p native/harness
             -l "(::std::cerr)" -n iostream

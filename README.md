@@ -1,4 +1,12 @@
-# The harness
+# fabric-harness
+
+The weft plane harness. Every plane and every edge links this, and none of them links
+iceoryx2.
+
+Split out of [`weft`](https://github.com/v-sekai-multiplayer-fabric/weft) with its
+history. weft keeps only the data plane and the NIF the BEAM loads. A plane is its own
+process, its own repository, and its own container.
+
 
 Goal: one runtime model for every plane. A thin C++ thread-per-core loop over iceoryx2.
 
@@ -6,7 +14,7 @@ State: the library exists and the loop does not.
 
 - **Built.** `weft::harness`, a library every plane and edge links. It holds the bus, the
   limits, and the payload type.
-- **Proved.** `native/harness/proof` passes a message between two processes with no copy
+- **Proved.** `proof/` passes a message between two processes with no copy
   and no daemon. The run is below.
 - **Not built.** The thread-per-core loop. No plane uses the library yet.
 
@@ -19,8 +27,8 @@ Left alone, each would grow its own copy of both, and the copies would drift the
 decision written twice always drifts. That is the failure `Weft.VocabularyTest` was
 written for, in a different form.
 
-So there is one. `native/CMakeLists.txt` builds the harness first, and every plane below
-it links `weft::harness`.
+So there is one. A plane repository brings this in with `git subtree add --prefix=thirdparty/harness`,
+and links `weft::harness`.
 
 | what it gives | where | why it is shared |
 | --- | --- | --- |
@@ -34,8 +42,8 @@ from the root build.
 
 ## Nothing links iceoryx2
 
-`native/harness/iceoryx2.sigs` lists the 25 C ABI functions the harness calls. Chromium's
-`generate_stubs.py`, vendored at `../../native/thirdparty/generate_stubs`, turns that list
+`iceoryx2.sigs` lists the 25 C ABI functions the harness calls. Chromium's
+`generate_stubs.py`, vendored at `thirdparty/generate_stubs`, turns that list
 into a dlsym dispatch table. The pattern comes from `fabric-godot-core`, which uses it for
 GStreamer.
 
@@ -86,12 +94,12 @@ excludes.
 
 Then build the proof and run both ends. Start the subscriber first.
 
-    cmake -S native/harness -B native/harness/build -DCMAKE_BUILD_TYPE=Release
-    cmake --build native/harness/build -j
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build -j
 
     export LD_LIBRARY_PATH=$PWD/.iceoryx/lib64   # or set WEFT_ICEORYX2_PATH
-    ./native/harness/build/weft-harness-subscriber 8 &
-    ./native/harness/build/weft-harness-publisher 8
+    ./build/weft-harness-subscriber 8 &
+    ./build/weft-harness-publisher 8
 
 ## The run
 
@@ -105,7 +113,7 @@ One machine, 16 cores, Fedora, GCC 16.1.1, iceoryx2 v0.9.3, Release.
 
 The subscriber exits 0. No daemon runs, and none is started.
 
-`ldd native/harness/build/weft-harness-publisher` lists no iceoryx2. The library arrives
+`ldd build/weft-harness-publisher` lists no iceoryx2. The library arrives
 through `dlopen` at start.
 
 ## What this run does not measure
@@ -124,11 +132,11 @@ that shadows the cache, so `-DLINUX=OFF` does nothing, and `ICEORYX_PLATFORM` is
 `CACHE PATH FORCE`. Upstream ships an ACL-free `unix` layer, and reaching it needs a patch
 to two build files.
 
-`../essays/runtime-choice.md` holds the full reversal, and the cost of it.
+weft's `docs/essays/runtime-choice.md` holds the full reversal, and the cost of it.
 
 ## What comes next
 
 1. The thread-per-core loop, once, because every plane uses it.
 2. iceoryx2 in the container image, so CI runs this proof rather than a person.
-3. The first plane behind it. `native/gyreplane` is the candidate, because its zone tick
+3. The first plane behind it. `zone-server-h2o` is the candidate, because its zone tick
    has no input at all until the bus carries one.
