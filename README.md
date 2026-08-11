@@ -34,7 +34,7 @@ and links `weft::harness`.
 | --- | --- | --- |
 | the bus | `iceoryx2.sigs`, and the table generated from it | one C ABI, one dispatch table |
 | the limits | `include/weft/limits.hpp` | every value is `Weft.Limits`, which is rivet's |
-| the payload | `include/weft/snapshot.hpp` | both ends of a service must agree exactly |
+| the payloads | `include/weft/snapshot.hpp`, `include/weft/store.hpp` | both ends of a service must agree exactly |
 
 `Weft.PlaneNetworkingTest` holds that shape. It fails if a second `.sigs` file appears, if
 a plane declares a limit of its own, or if a directory with a `CMakeLists.txt` is missing
