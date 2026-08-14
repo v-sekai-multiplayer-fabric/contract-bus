@@ -10,13 +10,25 @@ process, its own repository, and its own container.
 
 Goal: one runtime model for every plane. A thin C++ thread-per-core loop over iceoryx2.
 
-State: the library exists and the loop does not.
+State: a first loop exists, compiled against the real ABI, not yet run.
 
 - **Built.** `weft::harness`, a library every plane and edge links. It holds the bus, the
   limits, and the payload type.
-- **Proved.** `proof/` passes a message between two processes with no copy
-  and no daemon. The run is below.
-- **Not built.** The thread-per-core loop. No plane uses the library yet.
+- **Proved.** `proof/` passes a `Snapshot` between two processes with no copy and no
+  daemon. The run is below.
+- **Built and proved on Windows, not yet on Linux.** `weft/loop.hpp`'s `run_command_loop` —
+  a command in, reply bytes out, over a new payload variant (`iox2_type_variant_e_DYNAMIC`,
+  a byte slice, not `Snapshot`'s fixed struct) and `weft/command.hpp`'s request-id-prefixed
+  envelope. `proof/command_publisher.cpp`/`command_subscriber.cpp` ran for real on Windows
+  11 against iceoryx2 v0.9.3 built from source — both exit 0, 8/8 round trips, through the
+  actual dlopen stub table this repo generates, not a proxy for it. See "The command/reply
+  proof" below for the two real bugs (one iceoryx2's, one MinGW's) that had to be worked
+  around to get there, and for what's still not wired into `CMakeLists.txt` as a result.
+  This repo's primary target is Linux and that run hasn't happened yet.
+- One thread, not thread-per-core: the goal above names the eventual shape, and a
+  single-process, likely-GPU-bound interactor (one plane, this loop's first intended
+  caller) has no per-core work to split. `run_command_loop`, not `run_loop`, so it doesn't
+  claim to be that eventual answer.
 
 ## One harness, not one for each plane
 
@@ -112,6 +124,77 @@ One machine, 16 cores, Fedora, GCC 16.1.1, iceoryx2 v0.9.3, Release.
     subscriber: received 8, in order, intact
 
 The subscriber exits 0. No daemon runs, and none is started.
+
+## The command/reply proof (`run_command_loop`) -- run, on Windows
+
+`weft-harness-command_subscriber` runs `weft::run_command_loop` itself (server, echo
+`ask`), `weft-harness-command_publisher` sends "ping N" and checks "pong N" comes back on
+the reply topic, correlated by request id.
+
+    ./build/weft-harness-command_subscriber 8 &
+    ./build/weft-harness-command_publisher 8
+
+**Run for real on Windows 11 Pro (10.0.26200), llvm-mingw g++/clang 22.1.8, iceoryx2 v0.9.3
+built from source (`cargo build --release -p iceoryx2-ffi-c`, no prebuilt Windows release
+exists).** Two things had to be fixed first, neither in this repository's own code:
+
+1. **iceoryx2 v0.9.3 hardcodes `C:\Temp\` on Windows** and fails with no clear error when
+   it doesn't exist on a stock install -- exactly [issue #1868](
+   https://github.com/eclipse-iceoryx/iceoryx2/issues/1868), closed 2026-08-04 (after
+   v0.9.3). Fix: `mkdir -p /c/Temp/iceoryx2/shm` before running anything. This is an
+   iceoryx2 bug, not a harness one, but every Windows caller will hit it running the exact
+   proof below until an iceoryx2 release past that fix exists.
+2. **MinGW has no `<dlfcn.h>`**, which `iceoryx2_stubs.cc` needs. Fixed here by vendoring
+   [`dlfcn-win32`](https://github.com/dlfcn-win32/dlfcn-win32) v1.4.2 (MIT, implements
+   `dlopen`/`dlsym`/`dlclose` over `LoadLibrary`/`GetProcAddress`) at
+   `thirdparty/dlfcn-win32/`, included only on Windows. This keeps `posix_stubs`' generated
+   code completely unchanged -- no need for Chromium's separate `windows_lib_x64` stub
+   type after all, the *code* the generator already produces just needed a
+   `<dlfcn.h>` to compile against.
+
+With both of those, `WEFT_ICEORYX2_PATH` set to the built `iceoryx2_ffi_c.dll`:
+
+    command_publisher: tick 1 ok
+    ...
+    command_publisher: tick 8 ok
+    command_publisher: sent and confirmed 8
+    command_subscriber: answered 8, in order
+
+Both exit 0. `run_command_loop`'s actual code path -- `weft::load_bus()`, the dlopen stub
+table, `iox2_type_variant_e_DYNAMIC`, `loan_slice_uninit`'s element-count loan, the 8-byte
+request-id correlation -- all really ran, not a proxy for it. (A separate same-process
+direct-link test against the raw DLL, bypassing the stub table entirely, was written first
+as a faster sanity check before wiring up the two-process version above; it also passed
+8/8 and is not included here since the two-process run through the real harness code
+supersedes it as evidence.)
+
+Two Win32 API warnings appear during the run (`FindNextFileA`/`RemoveDirectoryA`, "no more
+files" / "directory is not empty") from iceoryx2's own Windows resource-cleanup path --
+cosmetic in this run (both processes still exit 0 with correct results), not investigated
+further here, and not new: they're inside iceoryx2 itself, not this repository.
+
+**`dlfcn-win32` is wired into `CMakeLists.txt`** behind `if(WIN32)`, so `cmake -B build -G
+Ninja && cmake --build build` on Windows needs no manual flags -- verified with a clean
+`Remove-Item -Recurse -Force build` before both the configure and the run above, so this is
+what a plane actually gets, not a manual workaround left as prose. One CMake bug found and
+fixed getting there: `project(weft-harness CXX)` never enables a C compiler, so
+`dlfcn.c` (a C file) got silently dropped from the build with zero errors -- CMake
+generated no rule for it at all, and the first sign was `lld-link: error: undefined symbol:
+dlopen` at final link, nothing at compile time. Fixed with `enable_language(C)` inside the
+`if(WIN32)` block, scoped there since nothing else in this repo is C.
+
+Still open: `WEFT_ICEORYX2_PATH` on Windows needs to point at the `.dll` directly (the
+hardcoded fallback names in `bus.hpp`, `libiceoryx2_ffi_c.so`/`.so.0`, are Linux sonames and
+don't match a Windows `iceoryx2_ffi_c.dll`) -- no Windows-specific guidance for that is
+written down yet the way `LD_LIBRARY_PATH` is documented for Linux above. And the `C:\Temp`
+bug is iceoryx2's, not fixable from this repo; every Windows caller needs
+`mkdir -p /c/Temp/iceoryx2/shm` (or the Windows equivalent) until an iceoryx2 release past
+[#1868](https://github.com/eclipse-iceoryx/iceoryx2/issues/1868) exists.
+
+**Not yet run: on Linux**, which is this project's primary target and everything above was
+written for originally. If you run this and it works, replace this paragraph with a real
+Linux run log, the same way the
+`Snapshot` proof above has one. If it doesn't, that's exactly what this section is for.
 
 `ldd build/weft-harness-publisher` lists no iceoryx2. The library arrives
 through `dlopen` at start.
