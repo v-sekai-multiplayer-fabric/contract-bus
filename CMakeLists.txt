@@ -63,14 +63,37 @@ add_custom_command(
     COMMENT "Generating the iceoryx2 prototypes from iceoryx2.sigs"
     VERBATIM)
 
-add_library(weft-harness STATIC ${STUB_CC} ${API_H})
+# MinGW has no <dlfcn.h>, which the generated iceoryx2_stubs.cc needs -- the code
+# generate_stubs.py produces is unchanged, it just has nothing to compile against on
+# Windows. dlfcn-win32 (vendored, thirdparty/dlfcn-win32, MIT) implements
+# dlopen/dlsym/dlclose over LoadLibrary/GetProcAddress and is Windows-only: on Linux/macOS
+# the real <dlfcn.h> is used and CMAKE_DL_LIBS is still how libdl gets linked.
+# Verified 2026-08-14: proof/command_{publisher,subscriber} ran for real against a
+# source-built iceoryx2 v0.9.3 on Windows 11 through exactly this path -- see README.md's
+# "The command/reply proof" section, including the C:\Temp bug this does NOT work around
+# (that one is iceoryx2's, not fixable from here; mkdir it before running anything).
+set(WEFT_HARNESS_EXTRA_SOURCES)
+if(WIN32)
+    # dlfcn.c is C, and `project(weft-harness CXX)` above never enables a C compiler --
+    # without this, CMake generates no build rule for it at all and the file is silently
+    # dropped (found the hard way: a clean build produced zero errors and zero .obj for
+    # it, only failing at final link with "undefined symbol: dlopen").
+    enable_language(C)
+    list(APPEND WEFT_HARNESS_EXTRA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dlfcn-win32/dlfcn.c)
+endif()
+
+add_library(weft-harness STATIC ${STUB_CC} ${API_H} ${WEFT_HARNESS_EXTRA_SOURCES})
 add_library(weft::harness ALIAS weft-harness)
 target_include_directories(weft-harness
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
            ${CMAKE_CURRENT_SOURCE_DIR}/src
            ${CMAKE_CURRENT_BINARY_DIR}/gen
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(weft-harness PUBLIC ${CMAKE_DL_LIBS})
+if(WIN32)
+    target_include_directories(weft-harness PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dlfcn-win32)
+else()
+    target_link_libraries(weft-harness PUBLIC ${CMAKE_DL_LIBS})
+endif()
 
 # The proof, and the bench that measured it. Off by default, because a plane that links
 # the harness has no use for them.
