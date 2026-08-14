@@ -10,13 +10,24 @@ process, its own repository, and its own container.
 
 Goal: one runtime model for every plane. A thin C++ thread-per-core loop over iceoryx2.
 
-State: the library exists and the loop does not.
+State: a first loop exists, compiled against the real ABI, not yet run.
 
 - **Built.** `weft::harness`, a library every plane and edge links. It holds the bus, the
   limits, and the payload type.
-- **Proved.** `proof/` passes a message between two processes with no copy
-  and no daemon. The run is below.
-- **Not built.** The thread-per-core loop. No plane uses the library yet.
+- **Proved.** `proof/` passes a `Snapshot` between two processes with no copy and no
+  daemon. The run is below.
+- **Built, not proved.** `weft/loop.hpp`'s `run_command_loop` — a command in, reply bytes
+  out, over a new payload variant (`iox2_type_variant_e_DYNAMIC`, a byte slice, not
+  `Snapshot`'s fixed struct) and `weft/command.hpp`'s request-id-prefixed envelope.
+  `proof/command_publisher.cpp`/`command_subscriber.cpp` exist and compile clean against
+  the generated ABI header, but nobody has run them against a live `libiceoryx2_ffi_c` —
+  this repo builds on any machine (see "Nothing links iceoryx2" below), the *proof* needs
+  Linux and the real library, neither of which was available where this was written. Run
+  the proof before anything links this loop into a real service.
+- One thread, not thread-per-core: the goal above names the eventual shape, and a
+  single-process, likely-GPU-bound interactor (one plane, this loop's first intended
+  caller) has no per-core work to split. `run_command_loop`, not `run_loop`, so it doesn't
+  claim to be that eventual answer.
 
 ## One harness, not one for each plane
 
@@ -112,6 +123,22 @@ One machine, 16 cores, Fedora, GCC 16.1.1, iceoryx2 v0.9.3, Release.
     subscriber: received 8, in order, intact
 
 The subscriber exits 0. No daemon runs, and none is started.
+
+## The command/reply proof (`run_command_loop`) -- not yet run
+
+Same setup as above, same expected shape: `weft-harness-command_subscriber` runs
+`weft::run_command_loop` itself (server, echo `ask`), `weft-harness-command_publisher`
+sends "ping N" and checks "pong N" comes back on the reply topic, correlated by request id.
+
+    ./build/weft-harness-command_subscriber 8 &
+    ./build/weft-harness-command_publisher 8
+
+Expected exit: both 0, `command_publisher` printing `sent and confirmed 8`,
+`command_subscriber` printing `answered 8, in order`. **This has not been run against a
+real `libiceoryx2_ffi_c`** -- both files compile clean against the generated ABI header
+(verified), which is as far as a machine with no Linux iceoryx2 install can check. If you
+run this and it works, replace this paragraph with a real run log, the same way the
+`Snapshot` proof above has one. If it doesn't, that's exactly what this section is for.
 
 `ldd build/weft-harness-publisher` lists no iceoryx2. The library arrives
 through `dlopen` at start.
