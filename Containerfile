@@ -39,7 +39,13 @@ COPY --from=iceoryx /opt/iceoryx /opt/iceoryx
 COPY --from=build /src/build/weft-harness-publisher /usr/local/bin/
 COPY --from=build /src/build/weft-harness-subscriber /usr/local/bin/
 COPY --from=build /src/build/weft-harness-bench_send /usr/local/bin/
-ENV LD_LIBRARY_PATH=/opt/iceoryx/lib64
+# The command/reply loop is proved on Windows but not on Linux, and the server
+# target is Linux. It cannot be proved from an image that does not carry it.
+COPY --from=build /src/build/weft-harness-command_publisher /usr/local/bin/
+COPY --from=build /src/build/weft-harness-command_subscriber /usr/local/bin/
+# Debian installs to lib, RHEL-style layouts to lib64. Carrying both means the
+# image loads on either, instead of dying at dlopen with the library present.
+ENV LD_LIBRARY_PATH=/opt/iceoryx/lib:/opt/iceoryx/lib64
 COPY fly/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
