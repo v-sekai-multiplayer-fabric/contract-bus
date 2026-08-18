@@ -16,7 +16,7 @@ State: a first loop exists, compiled against the real ABI, not yet run.
   limits, and the payload type.
 - **Proved.** `proof/` passes a `Snapshot` between two processes with no copy and no
   daemon. The run is below.
-- **Built and proved on Windows, not yet on Linux.** `weft/loop.hpp`'s `run_command_loop` —
+- **Built and proved on Windows and macOS, not yet on Linux.** `weft/loop.hpp`'s `run_command_loop` —
   a command in, reply bytes out, over a new payload variant (`iox2_type_variant_e_DYNAMIC`,
   a byte slice, not `Snapshot`'s fixed struct) and `weft/command.hpp`'s request-id-prefixed
   envelope. `proof/command_publisher.cpp`/`command_subscriber.cpp` ran for real on Windows
@@ -24,6 +24,8 @@ State: a first loop exists, compiled against the real ABI, not yet run.
   actual dlopen stub table this repo generates, not a proxy for it. See "The command/reply
   proof" below for the two real bugs (one iceoryx2's, one MinGW's) that had to be worked
   around to get there, and for what's still not wired into `CMakeLists.txt` as a result.
+  It has since run on macOS 26.5.2 arm64 as well — see "The command/reply proof on macOS"
+  below, which is where the one defect the Windows run could not have caught was found.
   This repo's primary target is Linux and that run hasn't happened yet.
 - One thread, not thread-per-core: the goal above names the eventual shape, and a
   single-process, likely-GPU-bound interactor (one plane, this loop's first intended
@@ -198,6 +200,49 @@ Linux run log, the same way the
 
 `ldd build/weft-harness-publisher` lists no iceoryx2. The library arrives
 through `dlopen` at start.
+
+## The command/reply proof on macOS -- run
+
+Both proofs run on **macOS 26.5.2, arm64 (Apple M-series), AppleClang 21.0.0, iceoryx2
+v0.9.3 built from source** with `cargo build --release -p iceoryx2-ffi-c`. That build is
+clean — no patches, no vendored shims, nothing like the two workarounds Windows needed.
+iceoryx2 lists macOS as a supported platform and on this evidence it is one.
+
+    export WEFT_ICEORYX2_PATH=.../iceoryx2/target/release/libiceoryx2_ffi_c.dylib
+    ./build/weft-harness-subscriber 8 &          # Snapshot, FIXED_SIZE
+    ./build/weft-harness-publisher 8
+    ./build/weft-harness-command_subscriber 8 &  # command/reply, DYNAMIC
+    ./build/weft-harness-command_publisher 8
+
+    subscriber: received 8, in order, intact
+    command_publisher: sent and confirmed 8
+    command_subscriber: answered 8, in order
+
+All four exit 0. Both payload variants therefore work here: the fixed 40-byte `Snapshot`
+and the byte-slice `loan_slice_uninit` path the command envelope needs.
+
+### The defect this run found
+
+`weft/bus.hpp` listed only `libiceoryx2_ffi_c.so` and `.so.0`, so on macOS the probe could
+not succeed however the library was installed — the file cargo produces is
+`libiceoryx2_ffi_c.dylib`. The first macOS run passed anyway, because `WEFT_ICEORYX2_PATH`
+is prepended to the list and tried first, so setting it skips the names entirely. Windows
+was run the same way and never exercised the list either.
+
+So the bug was reachable on two platforms and invisible on both, and only the run that
+deliberately *unset* the override could see it. The fix names the platform's own library
+and the platform's own loader variable, and it is checked the only way that means anything:
+
+    unset WEFT_ICEORYX2_PATH
+    export DYLD_LIBRARY_PATH=.../iceoryx2/target/release
+    ./build/weft-harness-command_publisher 8   -> sent and confirmed 8
+
+The error message named `LD_LIBRARY_PATH` on every platform too, which is advice that does
+nothing on a Mac. It now names `DYLD_LIBRARY_PATH`, `PATH` or `LD_LIBRARY_PATH` as the
+platform warrants.
+
+`otool -L build/weft-harness-publisher` lists no iceoryx2, the same as `ldd` on Linux. The
+library arrives through `dlopen` at start.
 
 ## What this run does not measure
 
