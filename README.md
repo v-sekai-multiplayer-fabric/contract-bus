@@ -12,10 +12,10 @@ message rather than a link error.
 
 ## State
 
-| payload | proof | run on |
-|---|---|---|
+| payload                          | proof                                   | run on         |
+| -------------------------------- | --------------------------------------- | -------------- |
 | `Snapshot`, fixed 40-byte struct | `proof/publisher.cpp`, `subscriber.cpp` | Windows, macOS |
-| byte slice, `run_command_loop` | `proof/command_*.cpp` | Windows, macOS |
+| byte slice, `run_command_loop`   | `proof/command_*.cpp`                   | Windows, macOS |
 
 Linux is this repository's primary target and the one platform the bus has **never run on**.
 

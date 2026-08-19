@@ -13,7 +13,6 @@ Split out of [`interactor-weft`](https://github.com/v-sekai-multiplayer-fabric/i
 history. weft keeps only the data plane and the NIF the BEAM loads. A plane is its own
 process, its own repository, and its own container.
 
-
 Goal: one runtime model for every plane. A thin C++ thread-per-core loop over iceoryx2.
 
 State: a first loop exists, compiled against the real ABI, not yet run.
@@ -50,11 +49,11 @@ written for, in a different form.
 So there is one. A plane repository brings this in with `git subtree add --prefix=thirdparty/harness`,
 and links `weft::harness`.
 
-| what it gives | where | why it is shared |
-| --- | --- | --- |
-| the bus | `iceoryx2.sigs`, and the table generated from it | one C ABI, one dispatch table |
-| the limits | `include/weft/limits.hpp` | every value is `Weft.Limits`, which is rivet's |
-| the payloads | `include/weft/snapshot.hpp`, `include/weft/store.hpp` | both ends of a service must agree exactly |
+| what it gives | where                                                 | why it is shared                               |
+| ------------- | ----------------------------------------------------- | ---------------------------------------------- |
+| the bus       | `iceoryx2.sigs`, and the table generated from it      | one C ABI, one dispatch table                  |
+| the limits    | `include/weft/limits.hpp`                             | every value is `Weft.Limits`, which is rivet's |
+| the payloads  | `include/weft/snapshot.hpp`, `include/weft/store.hpp` | both ends of a service must agree exactly      |
 
 `Weft.PlaneNetworkingTest` holds that shape. It fails if a second `.sigs` file appears, if
 a plane declares a limit of its own, or if a directory with a `CMakeLists.txt` is missing
