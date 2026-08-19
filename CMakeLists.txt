@@ -82,8 +82,26 @@ if(WIN32)
     list(APPEND WEFT_HARNESS_EXTRA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dlfcn-win32/dlfcn.c)
 endif()
 
+# CBOR is the reply format on this bus, and QCBOR is what reads it. Checked out by repo at
+# libs/qcbor rather than fetched by CMake, for the reason the manifest's geogram entry already
+# gives: a library a build links is a value the manifest depends on, and a FetchContent pin
+# states it in a file no tool here reads -- `repo status` cannot see it and no gate compares it.
+#
+# QCBOR over a reference-counted alternative for one structural reason: it allocates nothing.
+# Encoding writes into the caller's buffer and decoding reads in place, so leaks, double frees
+# and reference-count errors are absent rather than avoided. Its decode suite is 321 KB against
+# a 13 KB corpus of deliberately malformed CBOR, which is the input a wire parser faces.
+if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/libs/qcbor/CMakeLists.txt)
+    message(FATAL_ERROR
+        "libs/qcbor is empty. It is a manifest project: run `repo sync QCBOR` from the "
+        "workspace root. Nothing here fetches it, so an empty directory is a missing sync "
+        "rather than a build that quietly links something else.")
+endif()
+add_subdirectory(libs/qcbor EXCLUDE_FROM_ALL)
+
 add_library(weft-harness STATIC ${STUB_CC} ${API_H} ${WEFT_HARNESS_EXTRA_SOURCES})
 add_library(weft::harness ALIAS weft-harness)
+target_link_libraries(weft-harness PUBLIC qcbor::qcbor)
 target_include_directories(weft-harness
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
            ${CMAKE_CURRENT_SOURCE_DIR}/src
