@@ -35,8 +35,12 @@ namespace weft {
 
 // Same signature as `weft_interactor_t::ask` (contract-command): one command in, reply
 // bytes out, `*stop` set to ask the loop to wind down. `ctx` is the caller's.
-using Ask = size_t (*)(void *ctx, const char *command, unsigned char *reply, size_t cap,
-		int *stop);
+// The command's length travels with it. The loop always knew it and used to drop it, leaving
+// the callee to call strlen -- which is correct for a command line and wrong for anything with
+// a zero byte in it, so a CBOR request was truncated at its first one. The buffer is still
+// null-terminated, so a text caller may keep ignoring `len`.
+using Ask = size_t (*)(void *ctx, const char *command, size_t len, unsigned char *reply,
+		size_t cap, int *stop);
 
 // Opens the command subscriber and reply publisher, then calls `ask` for every command
 // that arrives until `ask` sets `*stop`, `iox2_node_wait` reports the node is stopping, or
@@ -138,8 +142,8 @@ inline int run_command_loop(void *ctx, Ask ask, uint64_t poll_ns = 10'000'000) {
 		command_line[copy_len] = '\0';
 		iox2_sample_drop(sample);
 
-		const size_t reply_len =
-				ask(ctx, command_line.data(), reply_buf.data() + HEADER_BYTES, BODY_MAX, &stop);
+		const size_t reply_len = ask(ctx, command_line.data(), copy_len,
+				reply_buf.data() + HEADER_BYTES, BODY_MAX, &stop);
 
 		iox2_sample_mut_h out = nullptr;
 		if (iox2_publisher_loan_slice_uninit(&pub, nullptr, &out, HEADER_BYTES + reply_len) !=
