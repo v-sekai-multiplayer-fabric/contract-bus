@@ -64,8 +64,7 @@ built from source (`cargo build --release -p iceoryx2-ffi-c`, no prebuilt Window
 exists).** Two things had to be fixed first, neither in this repository's own code:
 
 1. **iceoryx2 v0.9.3 hardcodes `C:\Temp\` on Windows** and fails with no clear error when
-   it doesn't exist on a stock install -- exactly [issue #1868](
-   https://github.com/eclipse-iceoryx/iceoryx2/issues/1868), closed 2026-08-04 (after
+   it doesn't exist on a stock install -- exactly [issue #1868](https://github.com/eclipse-iceoryx/iceoryx2/issues/1868), closed 2026-08-04 (after
    v0.9.3). Fix: `mkdir -p /c/Temp/iceoryx2/shm` before running anything. This is an
    iceoryx2 bug, not a harness one, but every Windows caller will hit it running the exact
    proof below until an iceoryx2 release past that fix exists.
@@ -74,7 +73,7 @@ exists).** Two things had to be fixed first, neither in this repository's own co
    `dlopen`/`dlsym`/`dlclose` over `LoadLibrary`/`GetProcAddress`) at
    `thirdparty/dlfcn-win32/`, included only on Windows. This keeps `posix_stubs`' generated
    code completely unchanged -- no need for Chromium's separate `windows_lib_x64` stub
-   type after all, the *code* the generator already produces just needed a
+   type after all, the _code_ the generator already produces just needed a
    `<dlfcn.h>` to compile against.
 
 With both of those, `WEFT_ICEORYX2_PATH` set to the built `iceoryx2_ffi_c.dll`:
@@ -153,7 +152,7 @@ is prepended to the list and tried first, so setting it skips the names entirely
 was run the same way and never exercised the list either.
 
 So the bug was reachable on two platforms and invisible on both, and only the run that
-deliberately *unset* the override could see it. The fix names the platform's own library
+deliberately _unset_ the override could see it. The fix names the platform's own library
 and the platform's own loader variable, and it is checked the only way that means anything:
 
     unset WEFT_ICEORYX2_PATH
