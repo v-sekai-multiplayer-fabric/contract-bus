@@ -17,7 +17,7 @@ struct Ctx {
 	int seen = 0;
 };
 
-size_t echo_ask(void *ctx_v, const char *command, unsigned char *reply, size_t cap, int *stop) {
+size_t echo_ask(void *ctx_v, const char *command, size_t /*len*/, unsigned char *reply, size_t cap, int *stop) {
 	Ctx *ctx = (Ctx *)ctx_v;
 	ctx->seen++;
 	std::fprintf(stderr, "command_subscriber: got %s\n", command);
